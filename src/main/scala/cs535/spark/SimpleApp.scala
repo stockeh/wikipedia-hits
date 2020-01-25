@@ -13,28 +13,35 @@ object SimpleApp {
     val linksInputPath = args(1)
     val output = args(2)
 
-    val titles = spark.read.textFile(linksInputPath + "/test-titles-sorted.txt")
+    // RDD(K: Long, T: String)
+    val titles = spark.read.textFile(linksInputPath + "/titles-sorted.txt")
       .rdd.zipWithIndex()
       .map { case (v, i) => (i + 1, v.toLowerCase()) }
 
-    // RDD(Long, String)
-    val topics = titles.filter(line => line._2.contains(keyTopic))
+    // RDD(K: Long, T: String)
+    val root = titles.filter(line => line._2.contains(keyTopic))
 
-    // RDD(Long, Array[Long])
-    val links = spark.read.textFile(linksInputPath + "/test-links-simple-sorted.txt")
+    // RDD(K: Long, V: Array[Long])
+    val links = spark.read.textFile(linksInputPath + "/links-simple-sorted.txt")
       .rdd.map(_.split(":")).map(v => (v(0).toLong, stringToLongArray(v(1))))
 
-    // iterate through <links> to get row R <- <k, v> if k in titles add the row to S if not present, then
-    // iterate through v and if any values in titles add the row to S if not present.
-    val keys = topics.keys.collect()
-    val sourceLinks = links.filter(check(_, keys))
+    // RDD(K: Long, (T: String, V: Array[Long]))
+    val original = root.join(links).map({ case (k, (t, v)) => (k, v) })
 
-    // links with source having title name
-    //    val sourceLinks = links.join(topics).map(t => (t._1, t._2._1))
-    // links with sink having title name
+    // RDD(K: Long, V: Long)
+    val flatLinks = links.flatMapValues(v => v)
 
-    val auth = topics.map(v => (v._1, 1.0))
-    val hubs = topics.map(v => (v._1, 1.0))
+    // RDD(V: Long, K: Long)
+    val flatLinksInverted = flatLinks.map(_.swap)
+
+    val linksToPageInRoot = root.join(flatLinksInverted).map({ case (k, (t, v)) => (v, k) })
+      .join(links).map({ case (k, (z, v)) => (k, v) })
+
+    val linkedToByRoot = root.join(flatLinks).map({ case (k, (t, v)) => (v, k) })
+      .join(links).map({ case (k, (z, v)) => (k, v) })
+
+    val base = original.union(linksToPageInRoot).union(linkedToByRoot).map(tup =>
+      (tup._1, tup)).reduceByKey({ case (k, v) => k }).map(_._2)
 
     val totalAuth = 0
     val totalHubs = 0
@@ -49,29 +56,8 @@ object SimpleApp {
     //
     //    }
 
-    sourceLinks.coalesce(1).mapValues(_.toList).saveAsTextFile(output + "-links")
-    topics.coalesce(1).saveAsTextFile(output)
-  }
-
-  /**
-   * Build the base set to include the root set as well as any page that either links to
-   * a page in the root set, or is linked to by a page in the root set.
-   *
-   * return true if value is contained in RDD, false otherwise
-   */
-  def check(row: (Long, Array[Long]), topics: Array[Long]): Boolean = {
-    if (topics.contains(row._1)) {
-      return true
-    } else {
-      if (!row._2.isEmpty) {
-        for (i <- 0 until row._2.length - 1) {
-          if (topics.contains(row._2(i))) {
-            return true
-          }
-        }
-      }
-      return false
-    }
+    base.coalesce(1).mapValues(_.toList).saveAsTextFile(output + "-links")
+    root.coalesce(1).saveAsTextFile(output)
   }
 
   /**
@@ -80,14 +66,10 @@ object SimpleApp {
    * return a populated array of Longs, or empty array otherwise
    */
   def stringToLongArray(value: String): Array[Long] = {
-    println(value)
     val temp = value.trim
-    println(temp)
     if (temp.nonEmpty) {
-      println("not")
       return temp.split("\\s+").map(_.toLong)
     } else {
-      println("is")
       return Array.empty[Long]
     }
   }
