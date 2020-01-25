@@ -3,9 +3,9 @@
 function usage {
 cat << EOF
 
-    Usage: $0 -[ b ] -c
+    Usage: $0 -[ k ] -c
 
-    -b : Submit Basic Job
+    -k : Key work for "root set"
 
     -c : Compile with SBT
 
@@ -13,10 +13,17 @@ EOF
     exit 1
 }
 
+function remove_hdfs_out {
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/${JOB_NAME} 
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-links"
+}
+
 function spark_runner {
-    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/${JOB_NAME} ||: \
-    && $SPARK_HOME/bin/spark-submit --master ${MASTER} --deploy-mode cluster \
-    --class ${JOB_CLASS} --supervise ${JAR_FILE} ${INPUT} ${OUTPUT}
+    
+    remove_hdfs_out
+    #  --deploy-mode cluster
+    $SPARK_HOME/bin/spark-submit --master ${MASTER} \
+    --class ${JOB_CLASS} ${JAR_FILE} ${KEY_TOPIC} ${INPUT} ${OUTPUT}
 }
 
 # Compile src 
@@ -29,19 +36,22 @@ fi
 # Configuration Details
 
 CORE_HDFS="hdfs://earth:32351"
-CORE_SPARK="spark://earth:32365"
 
-MASTER="yarn" # could also be CORE_SPARK
+# MASTER="yarn"
+# MASTER="spark://earth.cs.colostate.edu:32365"
+MASTER="local"
 OUT_DIR="/out"
 JAR_FILE="target/scala-2.11/wiki-hits_2.11-1.0.jar"
 
 # Various Jobs to Execute
 case "$1" in
 
--b|--basic)
+-k|--key)
+    KEY_TOPIC="$2"
+
     JOB_NAME="basic"
     JOB_CLASS="cs535.spark.SimpleApp"
-    INPUT="${CORE_HDFS}/data/PA1/titles-sorted.txt"
+    INPUT="${CORE_HDFS}/data/PA1"
     OUTPUT="${CORE_HDFS}${OUT_DIR}/${JOB_NAME}"
     spark_runner
     ;;
