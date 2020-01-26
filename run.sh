@@ -20,9 +20,9 @@ function remove_hdfs_out {
 
 function spark_runner {
     
-    remove_hdfs_out
-
-    $SPARK_HOME/bin/spark-submit --master ${MASTER} --deploy-mode cluster \
+#     remove_hdfs_out
+    # --deploy-mode cluster 
+    $SPARK_HOME/bin/spark-submit --master ${MASTER} \
     --class ${JOB_CLASS} ${JAR_FILE} ${KEY_TOPIC} ${INPUT} ${OUTPUT}
 }
 
@@ -38,8 +38,8 @@ fi
 CORE_HDFS="hdfs://earth:32351"
 
 # MASTER="yarn"
-# MASTER="local"
-MASTER="spark://earth.cs.colostate.edu:32365"
+MASTER="local"
+# MASTER="spark://earth.cs.colostate.edu:32365"
 OUT_DIR="/out"
 JAR_FILE="target/scala-2.11/wiki-hits_2.11-1.0.jar"
 
