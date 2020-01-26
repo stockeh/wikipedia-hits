@@ -23,7 +23,7 @@ function spark_runner {
     remove_hdfs_out
     # --deploy-mode cluster 
     $SPARK_HOME/bin/spark-submit --master ${MASTER} --deploy-mode cluster  \
-    --class ${JOB_CLASS} ${JAR_FILE} ${KEY_TOPIC} ${INPUT} ${OUTPUT}
+    --class ${JOB_CLASS} ${JAR_FILE} ${KEY_TOPIC} ${EPSILON} ${INPUT} ${OUTPUT}
 }
 
 # Compile src 
@@ -48,7 +48,7 @@ case "$1" in
 
 -k|--key)
     KEY_TOPIC="$2"
-
+    EPSILON="0.001"
     JOB_NAME="hits"
     JOB_CLASS="cs535.spark.SimpleApp"
     INPUT="${CORE_HDFS}/data/PA1"
