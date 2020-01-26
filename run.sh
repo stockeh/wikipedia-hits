@@ -14,15 +14,15 @@ EOF
 }
 
 function remove_hdfs_out {
-    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/${JOB_NAME} 
-    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-links"
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-auth"
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-hubs"
 }
 
 function spark_runner {
     
-#     remove_hdfs_out
+    remove_hdfs_out
     # --deploy-mode cluster 
-    $SPARK_HOME/bin/spark-submit --master ${MASTER} \
+    $SPARK_HOME/bin/spark-submit --master ${MASTER} --deploy-mode cluster  \
     --class ${JOB_CLASS} ${JAR_FILE} ${KEY_TOPIC} ${INPUT} ${OUTPUT}
 }
 
@@ -38,8 +38,8 @@ fi
 CORE_HDFS="hdfs://earth:32351"
 
 # MASTER="yarn"
-MASTER="local"
-# MASTER="spark://earth.cs.colostate.edu:32365"
+# MASTER="local"
+MASTER="spark://earth.cs.colostate.edu:32365"
 OUT_DIR="/out"
 JAR_FILE="target/scala-2.11/wiki-hits_2.11-1.0.jar"
 
@@ -49,7 +49,7 @@ case "$1" in
 -k|--key)
     KEY_TOPIC="$2"
 
-    JOB_NAME="basic"
+    JOB_NAME="hits"
     JOB_CLASS="cs535.spark.SimpleApp"
     INPUT="${CORE_HDFS}/data/PA1"
     OUTPUT="${CORE_HDFS}${OUT_DIR}/${JOB_NAME}"

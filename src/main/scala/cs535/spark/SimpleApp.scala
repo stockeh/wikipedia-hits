@@ -5,7 +5,7 @@ import org.apache.spark.SparkContext
 
 object SimpleApp {
   def main(args: Array[String]) {
-    val spark = SparkSession.builder.appName("Simple Application").getOrCreate()
+    val spark = SparkSession.builder.appName("Stock - HITS Wiki Application").getOrCreate()
 
     import spark.implicits._
 
@@ -14,13 +14,13 @@ object SimpleApp {
     val output = args(2)
 
     // RDD(K: Long, T: String)
-    val titles = spark.read.textFile(linksInputPath + "/test-titles-sorted-2.txt")
+    val titles = spark.read.textFile(linksInputPath + "/titles-sorted.txt")
       .rdd.zipWithIndex()
       .map { case (v, i) => (i + 1, v.toLowerCase()) }
 
     val root = titles.filter(line => line._2.contains(keyTopic))
 
-    val links = spark.read.textFile(linksInputPath + "/test-links-simple-sorted-2.txt")
+    val links = spark.read.textFile(linksInputPath + "/links-simple-sorted.txt")
       .rdd.map(_.split(":")).map(v => (v(0).toLong, stringToLongArray(v(1))))
 
     // RDD(K: Long, (T: String, V: Array[Long]))
@@ -41,45 +41,77 @@ object SimpleApp {
     val base = original.union(linksToPageInRoot).union(linkedToByRoot).map(tup =>
       (tup._1, tup)).reduceByKey({ case (k, v) => k }).map(_._2)
 
+    val incomingLinks = base.flatMapValues(v => v)
+
+    val outgoingLinks = incomingLinks.map(_.swap)
+    /*
     println("--- BASE ---")
     base.foreach(v => println(v._1, v._2.toList))
 
-    val incomingLinks = base.flatMapValues(v => v).map(_.swap).groupByKey().flatMapValues(v => v).map(_.swap)
-    
-    println("--- INCOMING ---")
+    println("--- INCOMING ( from, to )---")
     incomingLinks.foreach(println(_))
 
-    println("--- CALCULATE ---")
+    println("--- OUTGOING ( to, from )---")
+    outgoingLinks.foreach(println(_))
 
+    println("--- CALCULATE ---")
+    */
     var auth = base.map(v => (v._1, 1.0))
     var hubs = base.map(v => (v._1, 1.0))
 
+    var totalAuth = 0.0;
+    var totalHubs = 0.0;
+    var prevAuth = 1.0;
+    var prevHubs = 1.0;
+
     val epsilon = 0.001
 
-    for (i <- 0 to 0) {
+    while ((prevAuth - totalAuth).abs > epsilon && (prevHubs - totalHubs).abs > epsilon) {
 
       // authority
 
-      val auths = incomingLinks.join(hubs).map({ case (from, (to, hub)) => (to, hub) }).reduceByKey(_ + _)
-      auths.foreach(println(_))
+      prevAuth = totalAuth;
+      val calAuths = incomingLinks.join(hubs).map({ case (from, (to, hub)) => (to, hub) }).reduceByKey(_ + _)
 
-      var totalAuth = auths.values.sum()
-      println("auth total: " + totalAuth)
-      auth = auths.map({ case (k, v) => (k, v / totalAuth) }).rightOuterJoin(auth).map({ case (k, (v1, v2)) => (k, v1.getOrElse(0.0)) })
-      auth.foreach(println(_))
+      totalAuth = calAuths.values.sum()
+      auth = calAuths.map({ case (k, v) => (k, v / totalAuth) }).rightOuterJoin(auth).map({ case (k, (v1, v2)) => (k, v1.getOrElse(0.0)) })
 
       // hubs
-      
+      prevHubs = totalHubs
+      val calcHubs = outgoingLinks.join(auth).map({ case (to, (from, hub)) => (from, hub) }).reduceByKey(_ + _)
+
+      totalHubs = calcHubs.values.sum()
+      hubs = calcHubs.map({ case (k, v) => (k, v / totalHubs) }).rightOuterJoin(hubs).map({ case (k, (v1, v2)) => (k, v1.getOrElse(0.0)) })
+      /*
+      println("--- AUTHS ---")
+      calAuths.foreach(println(_))
+      println("auth total: " + totalAuth)
+      auth.foreach(println(_))
+
+      println("--- HUBS ---")
+      calcHubs.foreach(println(_))
+      println("hubs total: " + totalHubs)
+      hubs.foreach(println(_))
+			*/
     }
+    val topAuth = spark.sparkContext
+      .parallelize(auth.takeOrdered(50)(Ordering[Double].on(-_._2)))
+      .join(titles).sortBy(-_._2._1)
+      .map { case (k, v) => (v._2, (k, v._1)) }
 
-    //    while ((prevAuth - totalAuth).abs > epsilon && (prevHubs - totalHubs).abs > epsilon) {
-    //
-    //      // iteratively update <auth> and <hubs>
-    //
-    //    }
+    val topHubs = spark.sparkContext
+      .parallelize(hubs.takeOrdered(50)(Ordering[Double].on(-_._2)))
+      .join(titles).sortBy(-_._2._1)
+      .map { case (k, v) => (v._2, (k, v._1)) }
+    /*
+    println("--- FINISHED HUBS ---")
+    topHubs.foreach(println(_))
 
-    //    base.coalesce(1).mapValues(_.toList).saveAsTextFile(output + "-links")
-    //    root.coalesce(1).saveAsTextFile(output)
+    println("--- FINISHED AUTH ---")
+    topAuth.foreach(println(_))
+		*/
+    topAuth.coalesce(1).saveAsTextFile(output + "-auth")
+    topHubs.coalesce(1).saveAsTextFile(output + "-hubs")
   }
 
   /**
