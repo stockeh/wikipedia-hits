@@ -35,10 +35,10 @@ object SimpleApp {
     val links = spark.read.textFile(linksInputPath + "/links-simple-sorted.txt")
       .rdd.map(_.split(":")).map(v => (v(0).toLong, stringToLongArray(v(1))))
 
-    val base = createBaseSet(titles, links, keyTopic)
+    val root = titles.filter(line => line._2.contains(keyTopic))
+    val base = createBaseSet(root, links)
 
-    calculateScores(spark, titles, base, epsilon, output)
-
+    calculateScores(spark, titles, base, root, epsilon, output)
   }
 
   /**
@@ -56,16 +56,12 @@ object SimpleApp {
   }
 
   /**
-   * Create the base set by first creating the root set and then going
-   * through incoming and outgoing links
+   * Create the base set by going through incoming and outgoing links
    *
    * return an RDD of all the links in the base set
    */
   def createBaseSet(
-    titles: RDD[(Long, String)],
-    links: RDD[(Long, Array[Long])], keyTopic: String): RDD[(Long, Array[Long])] = {
-
-    val root = titles.filter(line => line._2.contains(keyTopic))
+    root: RDD[(Long, String)], links: RDD[(Long, Array[Long])]): RDD[(Long, Array[Long])] = {
 
     // RDD(K: Long, (T: String, V: Array[Long]))
     val original = root.join(links).map({ case (k, (t, v)) => (k, v) })
@@ -94,7 +90,8 @@ object SimpleApp {
    */
   def calculateScores(
     spark: SparkSession, titles: RDD[(Long, String)],
-    base: RDD[(Long, Array[Long])], epsilon: Double, output: String) = {
+    base: RDD[(Long, Array[Long])], root: RDD[(Long, String)], 
+    epsilon: Double, output: String) = {
 
     var auth = base.map(v => (v._1, 1.0))
     var hubs = base.map(v => (v._1, 1.0))
@@ -149,7 +146,7 @@ object SimpleApp {
         hubs.foreach(println(_))
       }
     }
-    saveResults(spark, titles, auth, hubs, output)
+    saveResults(spark, titles, base, root, auth, hubs, output)
   }
 
   /**
@@ -157,6 +154,7 @@ object SimpleApp {
    *
    */
   def saveResults(spark: SparkSession, titles: RDD[(Long, String)],
+    base: RDD[(Long, Array[Long])], root: RDD[(Long, String)], 
     auth: RDD[(Long, Double)], hubs: RDD[(Long, Double)], output: String) = {
 
     val topAuth = spark.sparkContext
@@ -176,7 +174,8 @@ object SimpleApp {
       println("--- FINISHED AUTH ---")
       topAuth.foreach(println(_))
     }
-
+    base.map({ case (k, v) => (k, v.toList) }).coalesce(1).saveAsTextFile(output + "-base")
+    root.coalesce(1).saveAsTextFile(output + "-root")
     topAuth.coalesce(1).saveAsTextFile(output + "-auth")
     topHubs.coalesce(1).saveAsTextFile(output + "-hubs")
   }

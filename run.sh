@@ -14,6 +14,8 @@ EOF
 }
 
 function remove_hdfs_out {
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-base"
+    $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-root"
     $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-auth"
     $HADOOP_HOME/bin/hadoop fs -rm -R ${OUT_DIR}/"${JOB_NAME}-hubs"
 }
